@@ -105,8 +105,18 @@ def train(data_dir, batch_size, epochs, workers):
     return resnet
 
 
-def inference_classification(workers, classify=True):
+def inference_classification(
+    data_dir,
+    workers=8,
+    model_file=None,
+    classify=True,
+):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    if model_file:
+        resnet = torch.load(model_file).eval().to(device)
+    else:
+        resnet = InceptionResnetV1(pretrained="vggface2").eval().to(device)
 
     resnet = torch.load("facial_recognition/trained_resnet.pt")
     if not classify:
@@ -115,11 +125,10 @@ def inference_classification(workers, classify=True):
         [np.float32, transforms.ToTensor(), fixed_image_standardization]
     )
 
-    dataset = datasets.ImageFolder("facial_recognition/data", transform=trans)
+    dataset = datasets.ImageFolder(data_dir, transform=trans)
     dataset.idx_to_class = {i: c for c, i in dataset.class_to_idx.items()}
     loader = DataLoader(dataset, num_workers=workers, batch_size=32)
 
-    resnet.eval()
     all_preds = []
     all_targets = []
     for x, y in loader:
@@ -130,7 +139,8 @@ def inference_classification(workers, classify=True):
             preds = resnet(x)
         all_preds.append(preds)
         all_targets.append(y)
+
     all_preds = torch.cat(all_preds)
     all_targets = torch.cat(all_targets)
 
-    return all_preds.shape
+    return all_preds
