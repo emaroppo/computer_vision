@@ -62,7 +62,6 @@ class FacialDetection:
         all_faces = []
         for i, (x, y) in enumerate(loader):
             image_idx = i * batch_size
-            print(i, x, y)
             save_paths = [
                 f"facial_detection/results/{dataset.classes[k]}/{image_idx+j}.png"
                 for j, k in enumerate(y)
