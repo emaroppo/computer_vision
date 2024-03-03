@@ -10,137 +10,150 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, transforms
 import numpy as np
+from datetime import datetime
 
-data_dir = "facial_recognition/data"
-
-
-batch_size = 32
-epochs = 8
-workers = 8
+# TO DO: handle dataset for training and inference separately
 
 
-def train(data_dir, batch_size, epochs, workers):
+class FacialRecognition:
+    def __init__(
+        self,
+        data_dir="facial_recognition/data",
+        workers=8,
+        model_file_path=None,
+    ) -> None:
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.workers = workers
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("Running on device: {}".format(device))
-    trans = transforms.Compose(
-        [np.float32, transforms.ToTensor(), fixed_image_standardization]
-    )
+        self.data_dir = data_dir
 
-    dataset = datasets.ImageFolder(data_dir, transform=trans)
-    img_inds = np.arange(len(dataset))
-    np.random.shuffle(img_inds)
-    train_inds = img_inds[: int(0.8 * len(img_inds))]
-    val_inds = img_inds[int(0.8 * len(img_inds)) :]
+        # Convert to tensor and normalize
+        self.preprocess = transforms.Compose(
+            [np.float32, transforms.ToTensor(), fixed_image_standardization]
+        )
+        self.dataset = datasets.ImageFolder(
+            self.data_dir,
+            transform=self.preprocess,
+        )
 
-    train_loader = DataLoader(
-        dataset,
-        num_workers=workers,
-        batch_size=batch_size,
-        sampler=SubsetRandomSampler(train_inds),
-    )
+        # Load model from file or instantiate new model
+        if model_file_path:
+            self.model = torch.load(model_file_path).to(self.device)
+        else:
+            self.model = InceptionResnetV1(
+                classify=True,
+                pretrained="vggface2",
+                num_classes=len(self.dataset.class_to_idx),
+            ).to(self.device)
 
-    val_loader = DataLoader(
-        dataset,
-        num_workers=workers,
-        batch_size=batch_size,
-        sampler=SubsetRandomSampler(val_inds),
-    )
+    def split_data(self, batch_size=32):
+        img_inds = np.arange(len(self.dataset))
+        np.random.shuffle(img_inds)
+        train_inds = img_inds[: int(0.8 * len(img_inds))]
+        val_inds = img_inds[int(0.8 * len(img_inds)) :]
 
-    resnet = InceptionResnetV1(
-        classify=True, pretrained="vggface2", num_classes=len(dataset.class_to_idx)
-    ).to(device)
+        self.train_loader = DataLoader(
+            self.dataset,
+            num_workers=self.workers,
+            batch_size=batch_size,
+            sampler=SubsetRandomSampler(train_inds),
+        )
 
-    optimizer = optim.Adam(resnet.parameters(), lr=0.001)
-    scheduler = MultiStepLR(optimizer, [5, 10])
+        self.val_loader = DataLoader(
+            self.dataset,
+            num_workers=self.workers,
+            batch_size=batch_size,
+            sampler=SubsetRandomSampler(val_inds),
+        )
 
-    loss_fn = torch.nn.CrossEntropyLoss()
-    metrics = {"fps": training.BatchTimer(), "acc": training.accuracy}
+    def train(self, epochs=8, save_model=True):
 
-    writer = SummaryWriter()
-    writer.iteration, writer.interval = 0, 10
+        optimizer = optim.Adam(self.model.parameters(), lr=0.001)
 
-    print("\n\nInitial")
-    print("-" * 10)
-    resnet.eval()
-    training.pass_epoch(
-        resnet,
-        loss_fn,
-        val_loader,
-        batch_metrics=metrics,
-        show_running=True,
-        device=device,
-        writer=writer,
-    )
+        # Decay LR by a factor of 0.1 every 5 epochs
+        scheduler = MultiStepLR(optimizer, [5, 10])
 
-    for epoch in range(epochs):
-        print("\nEpoch {}/{}".format(epoch + 1, epochs))
+        # Loss function for multi-class classification
+        loss_fn = torch.nn.CrossEntropyLoss()
+
+        metrics = {"fps": training.BatchTimer(), "acc": training.accuracy}
+        writer = SummaryWriter()
+        writer.iteration, writer.interval = 0, 10
+
+        print("\n\nInitial")
         print("-" * 10)
-
-        resnet.train()
+        self.model.eval()
         training.pass_epoch(
-            resnet,
+            self.model,
             loss_fn,
-            train_loader,
-            optimizer,
-            scheduler,
+            self.val_loader,
             batch_metrics=metrics,
             show_running=True,
-            device=device,
+            device=self.device,
             writer=writer,
         )
 
-        resnet.eval()
-        training.pass_epoch(
-            resnet,
-            loss_fn,
-            val_loader,
-            batch_metrics=metrics,
-            show_running=True,
-            device=device,
-            writer=writer,
-        )
+        for epoch in range(epochs):
+            print("\nEpoch {}/{}".format(epoch + 1, epochs))
+            print("-" * 10)
 
-    writer.close()
-    return resnet
+            self.model.train()
+            training.pass_epoch(
+                self.model,
+                loss_fn,
+                self.train_loader,
+                optimizer,
+                scheduler,
+                batch_metrics=metrics,
+                show_running=True,
+                device=self.device,
+                writer=writer,
+            )
 
+            self.model.eval()
+            training.pass_epoch(
+                self.model,
+                loss_fn,
+                self.val_loader,
+                batch_metrics=metrics,
+                show_running=True,
+                device=self.device,
+                writer=writer,
+            )
 
-def inference_classification(
-    data_dir,
-    workers=8,
-    model_file=None,
-    classify=True,
-):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        writer.close()
+        if save_model:
+            torch.save(
+                self.model,
+                f"facial_recognition/models/trained_resnet_{datetime.now()}.pt",
+            )
+        # maybe update self.model? add option via argument?
+        return self.model
 
-    if model_file:
-        resnet = torch.load(model_file).eval().to(device)
-    else:
-        resnet = InceptionResnetV1(pretrained="vggface2").eval().to(device)
+    def predict(
+        self,
+        classify=True,
+    ):
 
-    resnet = torch.load("facial_recognition/trained_resnet.pt")
-    if not classify:
-        resnet.classify = False
-    trans = transforms.Compose(
-        [np.float32, transforms.ToTensor(), fixed_image_standardization]
-    )
+        if not classify:
+            self.model.classify = False
 
-    dataset = datasets.ImageFolder(data_dir, transform=trans)
-    dataset.idx_to_class = {i: c for c, i in dataset.class_to_idx.items()}
-    loader = DataLoader(dataset, num_workers=workers, batch_size=32)
+        self.dataset.idx_to_class = {i: c for c, i in self.dataset.class_to_idx.items()}
+        loader = DataLoader(self.dataset, num_workers=self.workers, batch_size=32)
 
-    all_preds = []
-    all_targets = []
-    for x, y in loader:
-        all_targets.append(y)
-        x = x.to(device)
+        all_preds = []
+        for x, _ in loader:
+            x = x.to(self.device)
+            with torch.no_grad():
+                preds = self.model(x)
+            all_preds.append(preds)
 
-        with torch.no_grad():
-            preds = resnet(x)
-        all_preds.append(preds)
-        all_targets.append(y)
+        all_preds = torch.cat(all_preds)
 
-    all_preds = torch.cat(all_preds)
-    all_targets = torch.cat(all_targets)
+        if classify:
+            all_preds = all_preds.argmax(dim=1)
+            all_labels = [self.dataset.idx_to_class[i] for i in all_preds]
+            return all_preds, all_labels
 
-    return all_preds
+        all_labels = [self.dataset.idx_to_class[i] for i in all_preds]
+        return all_preds, all_labels
