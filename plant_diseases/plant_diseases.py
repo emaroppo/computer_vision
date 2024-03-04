@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import transforms, datasets
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from plant_diseases_dataset import PlantDiseaseDataset
 from torch.utils.tensorboard import SummaryWriter
 import os
@@ -24,7 +24,7 @@ class PlantDiseaseCNN(nn.Module):
         self.fc2 = nn.Linear(512, num_diseases)
 
         # Dropout layer
-        self.dropout = nn.Dropout(0.25)
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, x, species):
         # Image feature extraction
@@ -86,6 +86,9 @@ class PlantDiseaseCNN(nn.Module):
 
             writer.add_scalar("Training Loss", epoch_loss, epoch)
             writer.add_scalar("Training Accuracy", epoch_accuracy, epoch)
+            print(
+                f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%"
+            )
 
             if validation_dataloader is not None:
                 self.eval()
@@ -94,10 +97,7 @@ class PlantDiseaseCNN(nn.Module):
                 )
                 writer.add_scalar("Validation Loss", val_loss, epoch)
                 writer.add_scalar("Validation Accuracy", val_accuracy, epoch)
-
-            print(
-                f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%"
-            )
+                print(f"Validation Loss: {val_loss:.4f}, Accuracy: {val_accuracy:.2f}%")
 
         writer.close()
 
@@ -147,15 +147,19 @@ disease_to_idx = {disease: idx for idx, disease in enumerate(diseases)}
 dataset = PlantDiseaseDataset(
     root_dir, species_to_idx, disease_to_idx, transform=transform
 )
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)  # Added DataLoader
+train_size = int(0.8 * len(dataset))
+val_size = len(dataset) - train_size
+train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=True)
 plant_disease_cnn = PlantDiseaseCNN(
     num_species=len(species), num_diseases=len(diseases)
 )
 plant_disease_cnn.train_model(
-    dataloader,
-    None,  # Use the same dataloader for validation
+    train_dataloader,
+    val_dataloader,
     loss_fn=nn.CrossEntropyLoss(),
     optimizer=optim.Adam(plant_disease_cnn.parameters(), lr=0.001),
-    num_epochs=10,
+    num_epochs=10,  # starts overfitting early maybe prune or l
     device="cuda:0" if torch.cuda.is_available() else "cpu",
 )
