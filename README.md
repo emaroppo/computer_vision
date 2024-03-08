@@ -11,3 +11,6 @@ Stash of simple pytorch implementations of common ml problems. The purposes of t
 - TO DO: Object Detection
 - TO DO: Image Generation
 - TO DO: Image Captioning
+
+## RAG
+- Semantic Search for Movie Database: based on freecodecamp's tutorial (https://www.youtube.com/watch?v=JEBDfGqrAUA), reimplemented to use faiss and a local mongodb instance for a better reason than me not being bothered to set up an atlas instance. A different, more interesting one.
