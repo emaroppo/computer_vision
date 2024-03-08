@@ -130,7 +130,7 @@ class PlantDiseaseCNN(nn.Module):
 
 labels = [
     (i.split("___")[0], i.split("___")[1])
-    for i in os.listdir("plant_diseases/data/PlantVillage/segmented")
+    for i in os.listdir("computer_vision/plant_diseases/data/PlantVillage/segmented")
     if os.path.isdir("plant_diseases/data/PlantVillage/segmented/" + i)
 ]
 transform = transforms.Compose(
@@ -139,7 +139,7 @@ transform = transforms.Compose(
         transforms.ToTensor(),
     ]
 )
-root_dir = "plant_diseases/data/PlantVillage/segmented"
+root_dir = "computer_vision/plant_diseases/data/PlantVillage/segmented"
 species = sorted(list(set([i[0] for i in labels])))
 diseases = sorted(list(set([i[1] for i in labels])))
 species_to_idx = {species: idx for idx, species in enumerate(species)}

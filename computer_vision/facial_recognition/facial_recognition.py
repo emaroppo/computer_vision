@@ -18,7 +18,7 @@ from datetime import datetime
 class FacialRecognition:
     def __init__(
         self,
-        data_dir="facial_recognition/data",
+        data_dir="computer_vision/facial_recognition/data",
         workers=8,
         model_file_path=None,
     ) -> None:
@@ -125,7 +125,7 @@ class FacialRecognition:
         if save_model:
             torch.save(
                 self.model,
-                f"facial_recognition/models/trained_resnet_{datetime.now()}.pt",
+                f"computer_vision/facial_recognition/models/trained_resnet_{datetime.now()}.pt",
             )
         # maybe update self.model? add option via argument?
         return self.model

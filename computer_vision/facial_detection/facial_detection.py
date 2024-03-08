@@ -12,7 +12,9 @@ class FacialDetection:
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.model = MTCNN(keep_all=True, device=self.device)
 
-    def from_video(self, video_path, output_path="facial_detection/results"):
+    def from_video(
+        self, video_path, output_path="computer_vision/facial_detection/results"
+    ):
         # Open the video file
         container = av.open(video_path)
 
@@ -63,7 +65,7 @@ class FacialDetection:
         for i, (x, y) in enumerate(loader):
             image_idx = i * batch_size
             save_paths = [
-                f"facial_detection/results/{dataset.classes[k]}/{image_idx+j}.png"
+                f"computer_vision/facial_detection/results/{dataset.classes[k]}/{image_idx+j}.png"
                 for j, k in enumerate(y)
             ]
             faces = self.model(x, save_path=save_paths)
