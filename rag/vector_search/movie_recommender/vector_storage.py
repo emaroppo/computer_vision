@@ -2,7 +2,7 @@ from pymongo import MongoClient
 import numpy as np
 import faiss
 import torch
-import torch
+from tqdm import tqdm
 
 
 class VectorStorage:
@@ -29,13 +29,17 @@ class VectorStorage:
         inputs = self.tokenizer(
             text, padding=True, truncation=True, max_length=512, return_tensors="pt"
         )
+        inputs = {name: tensor.to(self.device) for name, tensor in inputs.items()}
+
         with torch.no_grad():
             outputs = self.model(**inputs)
         return outputs.last_hidden_state
 
     def initialize_faiss_index(self, embeddings):
         dimension = embeddings.shape[1]  # Assuming embeddings are 1D arrays
+        print(f"Embedding dimension: {dimension}")
         index = faiss.IndexFlatL2(dimension)
+        print("Index type: ", type(index))
         index.add(embeddings)
         return index
 
@@ -44,26 +48,25 @@ class VectorStorage:
         D, I = self.index.search(query_embedding.reshape(1, -1), k=k)
         return D, I
 
-    def compute_embeddings(self, embedding_field="text"):
+    def compute_embeddings(self, embedding_field="plot_summary"):
         for doc in self.collection.find({"embedding": {"$exists": False}}):
             embedding = self.encode(doc[embedding_field]).to(self.device).tolist()
             self.collection.update_one(
                 {"_id": doc["_id"]}, {"$set": {"embedding": embedding}}
             )
         embeddings = self.load_embeddings()
-        self.index = self.initialize_faiss_index(embeddings)
 
-    def insert(self, data, embedding_field="text"):
+    def insert(self, data, embedding_field="plot_summary"):
         if "embedding" not in data:
             data["embedding"] = (
                 self.encode(data[embedding_field]).to(self.device).tolist()
             )
         self.collection.insert_one(data)
 
-    def import_data(self, data, embedding_field="text"):
-        for doc in data:
+    def import_data(self, data, embedding_field="plot_summary"):
+        for doc in tqdm(data):
             if "embedding" not in doc:
                 doc["embedding"] = (
                     self.encode(doc[embedding_field]).to(self.device).tolist()
                 )
-        self.collection.insert_many(data)
+                self.collection.insert_one(doc)
