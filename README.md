@@ -6,11 +6,12 @@ Stash of simple pytorch implementations of common ml problems. The purposes of t
 - Face Detection and Recognition: based on https://github.com/timesler/facenet-pytorch/
     - TO DO: create face db (maybe vector db?)
 - Plant Disease Classification: simple cnn classifier with the twist of taking the plant species as input alongside the image (trained on PlantVillage)
-- TO DO: Stable Diffusion LoRA
 - TO DO: Image Segmentation
 - TO DO: Object Detection
-- TO DO: Image Generation
-- TO DO: Image Captioning
 
 ## RAG
-- Semantic Search for Movie Database: based on freecodecamp's tutorial (https://www.youtube.com/watch?v=JEBDfGqrAUA), reimplemented to use faiss and a local mongodb instance for a better reason than me not being bothered to set up an atlas instance. A different, more interesting one.
+- Semantic Search for Movie Database: based on freecodecamp's tutorial (https://www.youtube.com/watch?v=JEBDfGqrAUA), reimplemented to use faiss and a local mongodb instance for a better reason than me not being bothered to set up an atlas instance. A different, more interesting one. (WIP)
+
+## PEFT
+- LoRA finetuning script: based on https://www.youtube.com/watch?v=Us5ZFp16PaU&t=211s (WIP)
+- QLora finetuning script: based on https://www.youtube.com/watch?v=XpoKB3usmKc (WIP)
