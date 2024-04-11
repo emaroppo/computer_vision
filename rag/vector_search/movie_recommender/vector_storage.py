@@ -3,11 +3,17 @@ import numpy as np
 import faiss
 import torch
 from tqdm import tqdm
+from sentence_transformers import SentenceTransformer
 
 
 class VectorStorage:
     def __init__(
-        self, model, tokenizer, db_name, collection_name, host="localhost", port=27017
+        self,
+        model_name,
+        db_name,
+        collection_name,
+        host="localhost",
+        port=27017,
     ):
         self.client = MongoClient(host, port)
         self.db_name = db_name
@@ -16,8 +22,7 @@ class VectorStorage:
 
         # Use GPU if it's available
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = model.to(self.device)
-        self.tokenizer = tokenizer
+        self.model = SentenceTransformer(model_name).to(self.device)
 
     def load_embeddings(self):
         embeddings = []
@@ -26,17 +31,14 @@ class VectorStorage:
         return np.array(embeddings)
 
     def encode(self, text):
-        inputs = self.tokenizer(
-            text, padding=True, truncation=True, max_length=512, return_tensors="pt"
-        )
-        inputs = {name: tensor.to(self.device) for name, tensor in inputs.items()}
-
         with torch.no_grad():
-            outputs = self.model(**inputs)
-        return outputs.last_hidden_state
+            embeddings = self.model.encode(text, convert_to_tensor=True)
+        return embeddings
 
     def initialize_faiss_index(self, embeddings):
         dimension = embeddings.shape[1]  # Assuming embeddings are 1D arrays
+        lengths = [len(embedding) for embedding in embeddings]
+        print(set(lengths))
         print(f"Embedding dimension: {dimension}")
         index = faiss.IndexFlatL2(dimension)
         print("Index type: ", type(index))
@@ -44,7 +46,7 @@ class VectorStorage:
         return index
 
     def search(self, query_string, k=10):
-        query_embedding = self.model.encode(query_string).to(self.device)
+        query_embedding = self.model.encode(query_string)
         D, I = self.index.search(query_embedding.reshape(1, -1), k=k)
         return D, I
 
@@ -69,4 +71,8 @@ class VectorStorage:
                 doc["embedding"] = (
                     self.encode(doc[embedding_field]).to(self.device).tolist()
                 )
-                self.collection.insert_one(doc)
+                self.collection.update_one(
+                    {"_id": doc["_id"]},
+                    {"$set": {"embedding": doc["embedding"]}},
+                    upsert=True,
+                )

@@ -1,7 +1,8 @@
 from vector_storage import VectorStorage
-from transformers import BertModel, BertTokenizer
+from sentence_transformers import SentenceTransformer
 import csv
 from tqdm import tqdm
+import numpy as np
 import torch
 
 
@@ -9,16 +10,16 @@ class MovieRecommender:
     def __init__(
         self,
         db_name="movie_recommender",
+        model_name="all-MiniLM-L6-v2",
         collection_name="movies",
         host="localhost",
         port=27017,
     ):
-        model = BertModel.from_pretrained("bert-base-uncased")
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
         self.vector_storage = VectorStorage(
-            model, tokenizer, db_name, collection_name, host, port
+            model_name, db_name, collection_name, host, port
         )
+        self.build_index()
 
     def search(self, query_string, k=10):
         D, I = self.vector_storage.search(query_string, k)
@@ -70,20 +71,35 @@ class MovieRecommender:
     def build_index(self):
         data = self.vector_storage.collection.find(
             {"embedding": {"$exists": True}}
-        ).limit(500)
+        ).sort("title")
+        data = list(data)
         embeddings = [doc["embedding"] for doc in data]
-        embeddings = torch.tensor(embeddings).to(self.vector_storage.device)
+        embeddings = np.array(embeddings).astype(np.float32)
+
         self.vector_storage.index = self.vector_storage.initialize_faiss_index(
             embeddings
         )
 
+    def semantic_search(self, query_string, k=10):
+        D, I = self.search(query_string, k)
+        movies = self.vector_storage.collection.find(
+            {"embedding": {"$exists": True}}
+        ).sort("title")
+        movies = list(movies)
+        movies = [movies[i] for i in I[0]]
 
-movie_recommender = MovieRecommender()
-movie_recommender.import_data(from_file=False)
-movie_recommender.build_index()
-print(
-    movie_recommender.search(
-        "Bumbling pirate crewman  kills his captain after learning where he has hidden buried treasure. However as he begins to lose his memory, he relies more and more on the ghost of the man he's murdered to help him find the treasure. This film provided a reunion of sorts for Sellers with his onetime Goon Show colleague Spike Milligan, who appears halfway through the film."
-    )
-)
-print("done")
+        return D, I, movies
+
+    def similarity_search(self, movie_title, k=10):
+        movie = self.vector_storage.collection.find_one({"title": movie_title})
+        if movie is None:
+            return None
+        query_embedding = np.array(movie["embedding"]).astype(np.float32)
+        D, I = self.vector_storage.index.search(query_embedding.reshape(1, -1), k=k)
+        movies = self.vector_storage.collection.find(
+            {"embedding": {"$exists": True}}
+        ).sort("title")
+        movies = list(movies)
+        movies = [movies[i] for i in I[0]]
+
+        return D, I, movies
